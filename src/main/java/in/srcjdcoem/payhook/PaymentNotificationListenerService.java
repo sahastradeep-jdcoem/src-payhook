@@ -16,8 +16,10 @@ import android.util.Log;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class PaymentNotificationListenerService extends NotificationListenerService {
 
@@ -36,6 +38,15 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
 
     // Application context holder for sensory feedback and background workers
     public static volatile Context appContext = null;
+
+    // In-memory LRU deduplication cache: drops identical notification updates within 30 seconds
+    private static final Map<String, Long> RECENT_NOTIFICATIONS = new LinkedHashMap<String, Long>(50, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Long> eldest) {
+            return size() > 100;
+        }
+    };
+    private static final long DEDUP_WINDOW_MS = 30000; // 30 seconds
 
     // Circular in-memory log buffer for MainActivity UI
     public static final List<String> LOG_BUFFER = new ArrayList<>();
@@ -242,6 +253,18 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
             // 2. Check genuine payment criteria: Exclude shopping promotions and ensure real payment receipt terms
             if (!isGenuinePaymentReceipt(combinedText)) {
                 return;
+            }
+
+            // 3. Local deduplication: Drop identical notifications fired within 30s (Android banner updates / re-posts)
+            String dedupKey = packageName + "::" + combinedText.replaceAll("\\s+", " ").trim();
+            long now = System.currentTimeMillis();
+            synchronized (RECENT_NOTIFICATIONS) {
+                Long lastSeen = RECENT_NOTIFICATIONS.get(dedupKey);
+                if (lastSeen != null && (now - lastSeen) < DEDUP_WINDOW_MS) {
+                    Log.d(TAG, "Suppressed duplicate notification re-post (" + (now - lastSeen) + "ms since first post)");
+                    return;
+                }
+                RECENT_NOTIFICATIONS.put(dedupKey, now);
             }
 
             addLog("Payment notification intercepted from " + packageName + ": " + (combinedText.length() > 60 ? combinedText.substring(0, 60) + "..." : combinedText));
