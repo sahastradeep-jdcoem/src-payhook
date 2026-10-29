@@ -24,12 +24,14 @@ echo "=== 2. Linking resources and generating R.java ==="
 "$AAPT2" link "$BUILD_DIR/compiled_res/resources.zip" \
   -I "$ANDROID_JAR" \
   --manifest "$PROJECT_DIR/src/main/AndroidManifest.xml" \
+  --min-sdk-version 26 \
+  --target-sdk-version 34 \
   --java "$BUILD_DIR/gen" \
   -o "$BUILD_DIR/app-res.apk"
 
 echo "=== 3. Compiling Java sources ==="
 javac -encoding UTF-8 \
-  -source 8 -target 8 \
+  --release 8 \
   -g:none \
   -cp "$ANDROID_JAR:$BUILD_DIR/gen" \
   -d "$BUILD_DIR/classes" \
@@ -40,7 +42,7 @@ javac -encoding UTF-8 \
 
 echo "=== 4. Dexing bytecode with D8 ==="
 jar cf "$BUILD_DIR/classes.jar" -C "$BUILD_DIR/classes" .
-"$D8" --release --min-api 21 --output "$BUILD_DIR" --lib "$ANDROID_JAR" "$BUILD_DIR/classes.jar"
+"$D8" --release --min-api 26 --output "$BUILD_DIR" --lib "$ANDROID_JAR" "$BUILD_DIR/classes.jar"
 
 echo "=== 5. Packaging APK ==="
 cp "$BUILD_DIR/app-res.apk" "$BUILD_DIR/app-unaligned.apk"
