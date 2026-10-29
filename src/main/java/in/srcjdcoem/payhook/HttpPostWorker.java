@@ -13,6 +13,7 @@ public class HttpPostWorker implements Runnable {
 
     private final String notificationContent;
     private final String packageName;
+    private static final int MAX_ATTEMPTS = 3;
 
     public HttpPostWorker(String notificationContent, String packageName) {
         this.notificationContent = notificationContent;
@@ -21,45 +22,60 @@ public class HttpPostWorker implements Runnable {
 
     @Override
     public void run() {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(PaymentNotificationListenerService.WEBHOOK_URL);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            conn.setRequestProperty("x-src-webhook-key", PaymentNotificationListenerService.SECRET_KEY);
-            conn.setRequestProperty("User-Agent", "SRCPayHook-NativeAndroid/1.0");
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL(PaymentNotificationListenerService.WEBHOOK_URL);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                conn.setRequestProperty("x-src-webhook-key", PaymentNotificationListenerService.SECRET_KEY);
+                conn.setRequestProperty("User-Agent", "SRCPayHook-NativeAndroid/1.2");
 
-            JSONObject payload = new JSONObject();
-            payload.put("text", notificationContent);
-            payload.put("notificationText", notificationContent);
-            payload.put("packageName", packageName);
-            payload.put("timestamp", System.currentTimeMillis());
+                JSONObject payload = new JSONObject();
+                payload.put("text", notificationContent);
+                payload.put("notificationText", notificationContent);
+                payload.put("packageName", packageName);
+                payload.put("attempt", attempt);
+                payload.put("timestamp", System.currentTimeMillis());
 
-            byte[] postBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(postBytes);
-                os.flush();
-            }
+                byte[] postBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(postBytes);
+                    os.flush();
+                }
 
-            int responseCode = conn.getResponseCode();
-            if (responseCode >= 200 && responseCode < 300) {
-                PaymentNotificationListenerService.addLog("FORWARDED OK (HTTP " + responseCode + "): Pass confirmed on website!");
-            } else {
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getErrorStream() != null ? conn.getErrorStream() : conn.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                PaymentNotificationListenerService.addLog("FORWARD WARNING (HTTP " + responseCode + "): " + sb.toString());
-            }
-        } catch (Exception err) {
-            PaymentNotificationListenerService.addLog("NETWORK ERROR: " + err.getMessage());
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
+                int responseCode = conn.getResponseCode();
+                if (responseCode >= 200 && responseCode < 300) {
+                    PaymentNotificationListenerService.addLog("FORWARDED OK (HTTP " + responseCode + "): Pass confirmed on website!");
+                    PaymentNotificationListenerService.triggerSuccessFeedback();
+                    return; // Success, exit
+                } else {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getErrorStream() != null ? conn.getErrorStream() : conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) sb.append(line);
+                    PaymentNotificationListenerService.addLog("FORWARD WARNING (HTTP " + responseCode + "): " + sb.toString());
+                    if (responseCode == 401 || responseCode == 403) {
+                        return; // Non-retryable auth error
+                    }
+                }
+            } catch (Exception err) {
+                if (attempt < MAX_ATTEMPTS) {
+                    PaymentNotificationListenerService.addLog("NETWORK DIP (" + err.getMessage() + "). Retrying (" + attempt + "/" + MAX_ATTEMPTS + ")...");
+                    try {
+                        Thread.sleep(attempt * 2000L); // 2s, then 4s backoff
+                    } catch (InterruptedException ignored) {}
+                } else {
+                    PaymentNotificationListenerService.addLog("NETWORK FAILED after " + MAX_ATTEMPTS + " attempts: " + err.getMessage());
+                }
+            } finally {
+                if (conn != null) {
+                    conn.disconnect();
+                }
             }
         }
     }

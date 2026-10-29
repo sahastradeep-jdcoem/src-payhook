@@ -25,6 +25,8 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
     private TextView tvStatusDesc;
     private LinearLayout statusCard;
     private View statusDot;
+    private LinearLayout layoutRestrictedNotice;
+    private Button btnOpenAppInfo;
     private Button btnGrantPermission;
     private Button btnBatteryOpt;
     private Button btnTestConnection;
@@ -38,10 +40,16 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        if (PaymentNotificationListenerService.appContext == null) {
+            PaymentNotificationListenerService.appContext = getApplicationContext();
+        }
+
         tvStatus = findViewById(R.id.tvStatus);
         tvStatusDesc = findViewById(R.id.tvStatusDesc);
         statusCard = findViewById(R.id.statusCard);
         statusDot = findViewById(R.id.statusDot);
+        layoutRestrictedNotice = findViewById(R.id.layoutRestrictedNotice);
+        btnOpenAppInfo = findViewById(R.id.btnOpenAppInfo);
         btnGrantPermission = findViewById(R.id.btnGrantPermission);
         btnBatteryOpt = findViewById(R.id.btnBatteryOpt);
         btnTestConnection = findViewById(R.id.btnTestConnection);
@@ -50,6 +58,7 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         btnClearLogs = findViewById(R.id.btnClearLogs);
         tvLogs = findViewById(R.id.tvLogs);
 
+        btnOpenAppInfo.setOnClickListener(this);
         btnGrantPermission.setOnClickListener(this);
         btnBatteryOpt.setOnClickListener(this);
         btnTestConnection.setOnClickListener(this);
@@ -60,7 +69,18 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
     @Override
     public void onClick(View v) {
         int id = v.getId();
-        if (id == R.id.btnGrantPermission) {
+        if (id == R.id.btnOpenAppInfo) {
+            // Step 1: Open App Info directly so user can tap 3 dots (⋮) -> "Allow restricted settings"
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+                Toast.makeText(MainActivity.this, "Tap ⋮ (top right) → 'Allow restricted settings'", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "Could not open App Info: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        } else if (id == R.id.btnGrantPermission) {
+            // Step 2: Open Notification Access settings so user can toggle ON
             try {
                 Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
                 startActivity(intent);
@@ -83,12 +103,13 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         } else if (id == R.id.btnTestConnection) {
             runConnectionDiagnostics();
         } else if (id == R.id.btnTestPing) {
-            PaymentNotificationListenerService.addLog("Simulating test payment notification...");
+            PaymentNotificationListenerService.addLog("Simulating verified test payment notification...");
+            PaymentNotificationListenerService.triggerSuccessFeedback();
             PaymentNotificationListenerService.forwardNotificationAsync(
                 "SRC TEST: Received Rs. 1.00 from Test Student via UPI. UTR: 999900001234",
                 getPackageName()
             );
-            Toast.makeText(MainActivity.this, "Test payment sent! Watch the log below.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(MainActivity.this, "Chime played! Payment forwarded to website.", Toast.LENGTH_SHORT).show();
         } else if (id == R.id.btnClearLogs) {
             PaymentNotificationListenerService.LOG_BUFFER.clear();
             updateLogsView();
@@ -98,9 +119,6 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
 
     /**
      * Test Mode: Run full connection diagnostics against the webhook endpoint.
-     * Phase 1: DNS + HTTPS GET health check (tests reachability & SSL)
-     * Phase 2: Authenticated POST with security header (tests auth pipeline)
-     * Reports latency, HTTP status, and server response.
      */
     private void runConnectionDiagnostics() {
         btnTestConnection.setEnabled(false);
@@ -121,7 +139,7 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
                 conn.setRequestMethod("GET");
                 conn.setConnectTimeout(8000);
                 conn.setReadTimeout(8000);
-                conn.setRequestProperty("User-Agent", "SRCPayHook-Diagnostics/1.1");
+                conn.setRequestProperty("User-Agent", "SRCPayHook-Diagnostics/1.2");
                 conn.setRequestProperty("x-src-webhook-key", PaymentNotificationListenerService.SECRET_KEY);
 
                 int code = conn.getResponseCode();
@@ -151,7 +169,7 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
                 conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 conn.setRequestProperty("x-src-webhook-key", PaymentNotificationListenerService.SECRET_KEY);
-                conn.setRequestProperty("User-Agent", "SRCPayHook-Diagnostics/1.1");
+                conn.setRequestProperty("User-Agent", "SRCPayHook-Diagnostics/1.2");
 
                 org.json.JSONObject payload = new org.json.JSONObject();
                 payload.put("text", "SRC DIAGNOSTICS PING — connection test from PayHook app");
@@ -167,7 +185,6 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
                 int code = conn.getResponseCode();
                 long latency = System.currentTimeMillis() - start;
 
-                // Read response body
                 java.io.BufferedReader br = new java.io.BufferedReader(
                     new java.io.InputStreamReader(
                         code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream()
@@ -184,7 +201,6 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
                 result.append("  Latency: ").append(latency).append(" ms\n");
                 result.append("  Auth:    ").append(code == 200 ? "Verified" : (code == 401 ? "REJECTED" : "Unknown")).append("\n");
 
-                // Parse server message if JSON
                 try {
                     org.json.JSONObject resp = new org.json.JSONObject(respBody.toString());
                     if (resp.has("message")) {
@@ -197,10 +213,10 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
 
                 PaymentNotificationListenerService.addLog("DIAGNOSTICS Phase 2: HTTP " + code + " (" + latency + "ms) — Auth " + (code == 200 ? "OK" : "FAIL"));
 
-                // Final verdict
                 result.append("\n");
                 if (code == 200) {
                     result.append("RESULT: All systems operational. Ready for live payments.");
+                    PaymentNotificationListenerService.triggerSuccessFeedback();
                 } else if (code == 401) {
                     result.append("RESULT: Authentication rejected. Check webhook secret key.");
                 } else {
@@ -253,14 +269,29 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
             tvStatusDesc.setTextColor(Color.parseColor("#15803D"));
             statusCard.setBackgroundResource(R.drawable.card_status_active);
             statusDot.setBackgroundResource(R.drawable.dot_green);
+
+            // Hide permission buttons once active
+            layoutRestrictedNotice.setVisibility(View.GONE);
+            btnOpenAppInfo.setVisibility(View.GONE);
             btnGrantPermission.setVisibility(View.GONE);
         } else {
             tvStatus.setText("Notification Access Required");
             tvStatus.setTextColor(Color.parseColor("#991B1B"));
-            tvStatusDesc.setText("Tap the button below to grant notification access");
+            tvStatusDesc.setText("Complete Step 1 and Step 2 below to activate listener");
             tvStatusDesc.setTextColor(Color.parseColor("#B91C1C"));
             statusCard.setBackgroundResource(R.drawable.card_status_error);
             statusDot.setBackgroundResource(R.drawable.dot_red);
+
+            // If Android 13+ (API 33+), show step 1 to allow restricted settings
+            if (Build.VERSION.SDK_INT >= 33) {
+                layoutRestrictedNotice.setVisibility(View.VISIBLE);
+                btnOpenAppInfo.setVisibility(View.VISIBLE);
+                btnGrantPermission.setText("2. Grant Notification Access");
+            } else {
+                layoutRestrictedNotice.setVisibility(View.GONE);
+                btnOpenAppInfo.setVisibility(View.GONE);
+                btnGrantPermission.setText("Grant Notification Access");
+            }
             btnGrantPermission.setVisibility(View.VISIBLE);
         }
 

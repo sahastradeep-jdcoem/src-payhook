@@ -43,7 +43,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="v1.1"
+                    android:text="v1.2"
                     android:textSize="11sp"
                     android:textColor="#FFFFFF"
                     android:background="@drawable/badge_orange"
@@ -122,7 +122,7 @@
 
 
             <!-- ──────────────────────────────────────────────── -->
-            <!-- CARD 2: Setup Permissions                         -->
+            <!-- CARD 2: Device Setup & Permissions                -->
             <!-- ──────────────────────────────────────────────── -->
             <LinearLayout
                 android:id="@+id/setupCard"
@@ -136,18 +136,60 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="SETUP"
+                    android:text="DEVICE SETUP"
                     android:textSize="11sp"
                     android:textStyle="bold"
                     android:textColor="#64748B"
                     android:letterSpacing="0.08"
                     android:layout_marginBottom="12dp" />
 
+                <!-- Android 13+ Restricted Setting Notice Card -->
+                <LinearLayout
+                    android:id="@+id/layoutRestrictedNotice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_guide"
+                    android:padding="12dp"
+                    android:layout_marginBottom="10dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Android 13+ Security Unlock"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="#92400E" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="1. Tap button 1 below to open App Info.\n2. Tap the 3 dots (⋮) in top-right corner.\n3. Tap 'Allow restricted settings' &amp; enter PIN.\n4. Then tap button 2 to toggle Notification Access ON."
+                        android:textSize="11sp"
+                        android:textColor="#78350F"
+                        android:lineSpacingExtra="3dp"
+                        android:layout_marginTop="4dp" />
+                </LinearLayout>
+
+                <!-- Step 1 Button: Open App Info -->
+                <Button
+                    android:id="@+id/btnOpenAppInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="1. Open App Info (Allow Restricted Settings)"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#9A3412"
+                    android:background="@drawable/btn_orange"
+                    android:textAllCaps="false"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Step 2 Button: Grant Notification Access -->
                 <Button
                     android:id="@+id/btnGrantPermission"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
-                    android:text="Grant Notification Access"
+                    android:text="2. Grant Notification Access"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="#FFFFFF"
@@ -155,10 +197,11 @@
                     android:textAllCaps="false"
                     android:layout_marginBottom="8dp" />
 
+                <!-- Battery Optimization Button -->
                 <Button
                     android:id="@+id/btnBatteryOpt"
                     android:layout_width="match_parent"
-                    android:layout_height="52dp"
+                    android:layout_height="50dp"
                     android:text="Disable Battery Optimization"
                     android:textSize="14sp"
                     android:textColor="#17458F"
@@ -218,7 +261,7 @@
                     android:id="@+id/btnTestPing"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
-                    android:text="Simulate Test Payment"
+                    android:text="Simulate Test Payment (Ding! Chime)"
                     android:textSize="14sp"
                     android:textColor="#166534"
                     android:background="@drawable/btn_green"

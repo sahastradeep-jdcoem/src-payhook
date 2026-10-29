@@ -53,12 +53,13 @@ cd "$PROJECT_DIR"
 echo "=== 6. Zipalign APK ==="
 "$ZIPALIGN" -f 4 "$BUILD_DIR/app-unaligned.apk" "$BUILD_DIR/src-payhook-unsigned.apk"
 
-echo "=== 7. Signing APK with release keystore ==="
-KEYSTORE="$BUILD_DIR/release.keystore"
+echo "=== 7. Signing APK with permanent release keystore ==="
+KEYSTORE="$PROJECT_DIR/release.keystore"
 if [ ! -f "$KEYSTORE" ]; then
+  echo "Generating permanent release keystore at: $KEYSTORE"
   keytool -genkeypair -v -keystore "$KEYSTORE" -alias srcpayhook -keyalg RSA -keysize 2048 -validity 10000 \
     -storepass srcjdcoem2026 -keypass srcjdcoem2026 \
-    -dname "CN=SRC JDCOEM, OU=SRC, O=JDCOEM, L=Nagpur, ST=Maharashtra, C=IN"
+    -dname "CN=Student Representative Council, OU=SRC, O=JDCOEM, L=Nagpur, ST=Maharashtra, C=IN"
 fi
 
 "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:srcjdcoem2026 --key-pass pass:srcjdcoem2026 \

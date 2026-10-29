@@ -1,7 +1,13 @@
 package in.srcjdcoem.payhook;
 
 import android.app.Notification;
+import android.content.Context;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
@@ -17,6 +23,9 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     private static final String TAG = "SRCPayHook";
     public static final String WEBHOOK_URL = "https://www.srcjdcoem.in/api/upi/webhook?secret=SRC_UPI_2026_GATEWAY";
     public static final String SECRET_KEY = "SRC_UPI_2026_GATEWAY";
+
+    // Application context holder for sensory feedback and background workers
+    public static volatile Context appContext = null;
 
     // Circular in-memory log buffer for MainActivity UI
     public static final List<String> LOG_BUFFER = new ArrayList<>();
@@ -37,9 +46,51 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         }
     }
 
+    /**
+     * Sensory Feedback: Dual chime tone + crisp double vibration buzz
+     * Gives desk organizers instant audio-haptic confirmation when a payment is verified.
+     */
+    public static void triggerSuccessFeedback() {
+        try {
+            // 1. Audio chime in background thread
+            new Thread(() -> {
+                try {
+                    ToneGenerator toneGen = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
+                    toneGen.startTone(ToneGenerator.TONE_PROP_ACK, 250);
+                    try { Thread.sleep(260); } catch (Exception ignored) {}
+                    toneGen.release();
+                } catch (Exception e) {
+                    Log.w(TAG, "Audio tone failed: " + e.getMessage());
+                }
+            }).start();
+
+            // 2. Haptic double vibration
+            Context ctx = appContext != null ? appContext : activeMainActivity;
+            if (ctx != null) {
+                Vibrator v = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+                if (v != null && v.hasVibrator()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        v.vibrate(VibrationEffect.createWaveform(new long[]{0, 90, 60, 110}, -1));
+                    } else {
+                        v.vibrate(new long[]{0, 90, 60, 110}, -1);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Feedback trigger error: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        appContext = getApplicationContext();
+    }
+
     @Override
     public void onListenerConnected() {
         super.onListenerConnected();
+        appContext = getApplicationContext();
         addLog("Service connected and listening for payments.");
     }
 
