@@ -1,112 +1,316 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="20dp"
-    android:background="#F8FAFC">
+    android:background="#F1F5F9"
+    android:fillViewport="true">
 
-    <!-- Header -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="SRC JDCOEM PayHook"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:textColor="#002970" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Real-time UPI payment forwarding service (Paytm, GPay, PhonePe, SMS)"
-        android:textSize="12sp"
-        android:textColor="#64748B"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="16dp" />
-
-    <!-- Status Card -->
     <LinearLayout
-        android:id="@+id/statusCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:background="#EEF2FF"
-        android:layout_marginBottom="16dp">
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Checking Status..."
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:textColor="#1E1B4B" />
-
-        <TextView
-            android:id="@+id/tvStatusDesc"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Listening for incoming student registrations in background."
-            android:textSize="12sp"
-            android:textColor="#4338CA"
-            android:layout_marginTop="4dp" />
-    </LinearLayout>
-
-    <!-- Action Buttons -->
-    <Button
-        android:id="@+id/btnGrantPermission"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Grant Notification Access"
-        android:textColor="#FFFFFF"
-        android:backgroundTint="#002970"
-        android:layout_marginBottom="8dp" />
-
-    <Button
-        android:id="@+id/btnBatteryOpt"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Disable Battery Optimization"
-        android:textColor="#002970"
-        android:backgroundTint="#E0E7FF"
-        android:layout_marginBottom="8dp" />
-
-    <Button
-        android:id="@+id/btnTestPing"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Send Test Ping to Website"
-        android:textColor="#065F46"
-        android:backgroundTint="#D1FAE5"
-        android:layout_marginBottom="16dp" />
-
-    <!-- Logs Header -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Forwarding Activity Logs"
-        android:textSize="13sp"
-        android:textStyle="bold"
-        android:textColor="#334155"
-        android:layout_marginBottom="6dp" />
-
-    <!-- Logs ScrollView -->
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#FFFFFF"
-        android:padding="12dp">
-
-        <TextView
-            android:id="@+id/tvLogs"
+        <!-- ════════════════════════════════════════════════════ -->
+        <!-- HEADER: SRC Navy Gradient Bar                        -->
+        <!-- ════════════════════════════════════════════════════ -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:textSize="11sp"
-            android:textColor="#1E293B"
-            android:text="Ready and waiting for notifications..." />
-    </ScrollView>
+            android:orientation="vertical"
+            android:background="@drawable/header_gradient"
+            android:paddingTop="40dp"
+            android:paddingBottom="24dp"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp">
 
-</LinearLayout>
+            <!-- App name row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="SRC PayHook"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:textColor="#FFFFFF" />
+
+                <!-- Version badge -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="v1.1"
+                    android:textSize="11sp"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/badge_orange"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:paddingTop="3dp"
+                    android:paddingBottom="3dp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Real-time UPI payment notification forwarder for srcjdcoem.in"
+                android:textSize="13sp"
+                android:textColor="#CBD5E1"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+
+        <!-- ════════════════════════════════════════════════════ -->
+        <!-- BODY: Padded content area                            -->
+        <!-- ════════════════════════════════════════════════════ -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+
+            <!-- ──────────────────────────────────────────────── -->
+            <!-- CARD 1: Service Status                            -->
+            <!-- ──────────────────────────────────────────────── -->
+            <LinearLayout
+                android:id="@+id/statusCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/card_status_active"
+                android:padding="16dp"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp">
+
+                <!-- Status dot -->
+                <View
+                    android:id="@+id/statusDot"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:background="@drawable/dot_green"
+                    android:layout_marginRight="12dp" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Listener Active"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="#166534" />
+
+                    <TextView
+                        android:id="@+id/tvStatusDesc"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Capturing Paytm, GPay, PhonePe and SMS notifications"
+                        android:textSize="12sp"
+                        android:textColor="#15803D"
+                        android:layout_marginTop="2dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+
+            <!-- ──────────────────────────────────────────────── -->
+            <!-- CARD 2: Setup Permissions                         -->
+            <!-- ──────────────────────────────────────────────── -->
+            <LinearLayout
+                android:id="@+id/setupCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="SETUP"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="#64748B"
+                    android:letterSpacing="0.08"
+                    android:layout_marginBottom="12dp" />
+
+                <Button
+                    android:id="@+id/btnGrantPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:text="Grant Notification Access"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/btn_primary"
+                    android:textAllCaps="false"
+                    android:layout_marginBottom="8dp" />
+
+                <Button
+                    android:id="@+id/btnBatteryOpt"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:text="Disable Battery Optimization"
+                    android:textSize="14sp"
+                    android:textColor="#17458F"
+                    android:background="@drawable/btn_secondary"
+                    android:textAllCaps="false" />
+            </LinearLayout>
+
+
+            <!-- ──────────────────────────────────────────────── -->
+            <!-- CARD 3: Test & Diagnostics                        -->
+            <!-- ──────────────────────────────────────────────── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="TEST &amp; DIAGNOSTICS"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="#64748B"
+                    android:letterSpacing="0.08"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Connection test button -->
+                <Button
+                    android:id="@+id/btnTestConnection"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:text="Run Connection Diagnostics"
+                    android:textSize="14sp"
+                    android:textColor="#9A3412"
+                    android:background="@drawable/btn_orange"
+                    android:textAllCaps="false"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Connection result readout -->
+                <TextView
+                    android:id="@+id/tvConnectionResult"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    android:textSize="12sp"
+                    android:fontFamily="monospace"
+                    android:textColor="#334155"
+                    android:background="#F8FAFC"
+                    android:padding="10dp"
+                    android:layout_marginBottom="10dp" />
+
+                <!-- Simulated payment test button -->
+                <Button
+                    android:id="@+id/btnTestPing"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:text="Simulate Test Payment"
+                    android:textSize="14sp"
+                    android:textColor="#166534"
+                    android:background="@drawable/btn_green"
+                    android:textAllCaps="false"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Clear logs button -->
+                <Button
+                    android:id="@+id/btnClearLogs"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="Clear Logs"
+                    android:textSize="13sp"
+                    android:textColor="#64748B"
+                    android:background="@android:color/transparent"
+                    android:textAllCaps="false" />
+            </LinearLayout>
+
+
+            <!-- ──────────────────────────────────────────────── -->
+            <!-- CARD 4: Activity Logs (Terminal Style)            -->
+            <!-- ──────────────────────────────────────────────── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
+
+                    <View
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:background="@drawable/dot_green"
+                        android:layout_marginRight="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ACTIVITY LOG"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="#64748B"
+                        android:letterSpacing="0.08" />
+                </LinearLayout>
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="240dp"
+                    android:background="@drawable/log_bg"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:id="@+id/tvLogs"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:textSize="11sp"
+                        android:textColor="#94A3B8"
+                        android:lineSpacingExtra="4dp"
+                        android:text="Waiting for notifications..." />
+                </ScrollView>
+            </LinearLayout>
+
+
+            <!-- ──────────────────────────────────────────────── -->
+            <!-- Footer branding                                   -->
+            <!-- ──────────────────────────────────────────────── -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Student Representative Council, JDCOEM Nagpur"
+                android:textSize="11sp"
+                android:textColor="#94A3B8"
+                android:gravity="center"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="srcjdcoem.in"
+                android:textSize="11sp"
+                android:textColor="#E78023"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="20dp" />
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

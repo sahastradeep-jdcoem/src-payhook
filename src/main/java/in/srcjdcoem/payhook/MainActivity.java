@@ -24,9 +24,13 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
     private TextView tvStatus;
     private TextView tvStatusDesc;
     private LinearLayout statusCard;
+    private View statusDot;
     private Button btnGrantPermission;
     private Button btnBatteryOpt;
+    private Button btnTestConnection;
+    private TextView tvConnectionResult;
     private Button btnTestPing;
+    private Button btnClearLogs;
     private TextView tvLogs;
 
     @Override
@@ -37,14 +41,20 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         tvStatus = findViewById(R.id.tvStatus);
         tvStatusDesc = findViewById(R.id.tvStatusDesc);
         statusCard = findViewById(R.id.statusCard);
+        statusDot = findViewById(R.id.statusDot);
         btnGrantPermission = findViewById(R.id.btnGrantPermission);
         btnBatteryOpt = findViewById(R.id.btnBatteryOpt);
+        btnTestConnection = findViewById(R.id.btnTestConnection);
+        tvConnectionResult = findViewById(R.id.tvConnectionResult);
         btnTestPing = findViewById(R.id.btnTestPing);
+        btnClearLogs = findViewById(R.id.btnClearLogs);
         tvLogs = findViewById(R.id.tvLogs);
 
         btnGrantPermission.setOnClickListener(this);
         btnBatteryOpt.setOnClickListener(this);
+        btnTestConnection.setOnClickListener(this);
         btnTestPing.setOnClickListener(this);
+        btnClearLogs.setOnClickListener(this);
     }
 
     @Override
@@ -70,14 +80,146 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
                     } catch (Exception ignored) {}
                 }
             }
+        } else if (id == R.id.btnTestConnection) {
+            runConnectionDiagnostics();
         } else if (id == R.id.btnTestPing) {
-            PaymentNotificationListenerService.addLog("Triggering manual test ping to website...");
+            PaymentNotificationListenerService.addLog("Simulating test payment notification...");
             PaymentNotificationListenerService.forwardNotificationAsync(
-                "SRC MANUAL TEST PING: Received Rs. 10.00 from Delegate Test. UTR: TEST999888",
+                "SRC TEST: Received Rs. 1.00 from Test Student via UPI. UTR: 999900001234",
                 getPackageName()
             );
-            Toast.makeText(MainActivity.this, "Test ping sent! Check activity logs below.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(MainActivity.this, "Test payment sent! Watch the log below.", Toast.LENGTH_SHORT).show();
+        } else if (id == R.id.btnClearLogs) {
+            PaymentNotificationListenerService.LOG_BUFFER.clear();
+            updateLogsView();
+            Toast.makeText(MainActivity.this, "Logs cleared.", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /**
+     * Test Mode: Run full connection diagnostics against the webhook endpoint.
+     * Phase 1: DNS + HTTPS GET health check (tests reachability & SSL)
+     * Phase 2: Authenticated POST with security header (tests auth pipeline)
+     * Reports latency, HTTP status, and server response.
+     */
+    private void runConnectionDiagnostics() {
+        btnTestConnection.setEnabled(false);
+        btnTestConnection.setText("Running diagnostics...");
+        tvConnectionResult.setVisibility(View.VISIBLE);
+        tvConnectionResult.setText("Connecting to srcjdcoem.in...");
+
+        PaymentNotificationListenerService.addLog("DIAGNOSTICS: Starting connection test...");
+
+        new Thread(() -> {
+            StringBuilder result = new StringBuilder();
+
+            // ── Phase 1: GET health check ──
+            try {
+                long start = System.currentTimeMillis();
+                java.net.URL url = new java.net.URL("https://www.srcjdcoem.in/api/upi/webhook?secret=SRC_UPI_2026_GATEWAY");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setRequestProperty("User-Agent", "SRCPayHook-Diagnostics/1.1");
+                conn.setRequestProperty("x-src-webhook-key", PaymentNotificationListenerService.SECRET_KEY);
+
+                int code = conn.getResponseCode();
+                long latency = System.currentTimeMillis() - start;
+                conn.disconnect();
+
+                result.append("Phase 1 — GET Health Check\n");
+                result.append("  Status:  HTTP ").append(code).append(code == 200 ? " OK" : " WARNING").append("\n");
+                result.append("  Latency: ").append(latency).append(" ms\n");
+                result.append("  SSL:     Verified\n\n");
+
+                PaymentNotificationListenerService.addLog("DIAGNOSTICS Phase 1: HTTP " + code + " (" + latency + "ms)");
+            } catch (Exception e) {
+                result.append("Phase 1 — GET Health Check\n");
+                result.append("  FAILED: ").append(e.getMessage()).append("\n\n");
+                PaymentNotificationListenerService.addLog("DIAGNOSTICS Phase 1 FAILED: " + e.getMessage());
+            }
+
+            // ── Phase 2: Authenticated POST test ──
+            try {
+                long start = System.currentTimeMillis();
+                java.net.URL url = new java.net.URL(PaymentNotificationListenerService.WEBHOOK_URL);
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                conn.setRequestProperty("x-src-webhook-key", PaymentNotificationListenerService.SECRET_KEY);
+                conn.setRequestProperty("User-Agent", "SRCPayHook-Diagnostics/1.1");
+
+                org.json.JSONObject payload = new org.json.JSONObject();
+                payload.put("text", "SRC DIAGNOSTICS PING — connection test from PayHook app");
+                payload.put("packageName", "in.srcjdcoem.payhook.diagnostics");
+                payload.put("timestamp", System.currentTimeMillis());
+
+                byte[] body = payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                java.io.OutputStream os = conn.getOutputStream();
+                os.write(body);
+                os.flush();
+                os.close();
+
+                int code = conn.getResponseCode();
+                long latency = System.currentTimeMillis() - start;
+
+                // Read response body
+                java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(
+                        code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream()
+                    )
+                );
+                StringBuilder respBody = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) respBody.append(line);
+                br.close();
+                conn.disconnect();
+
+                result.append("Phase 2 — Authenticated POST\n");
+                result.append("  Status:  HTTP ").append(code).append(code == 200 ? " OK" : "").append("\n");
+                result.append("  Latency: ").append(latency).append(" ms\n");
+                result.append("  Auth:    ").append(code == 200 ? "Verified" : (code == 401 ? "REJECTED" : "Unknown")).append("\n");
+
+                // Parse server message if JSON
+                try {
+                    org.json.JSONObject resp = new org.json.JSONObject(respBody.toString());
+                    if (resp.has("message")) {
+                        result.append("  Server:  ").append(resp.getString("message")).append("\n");
+                    }
+                    if (resp.has("isPing") && resp.getBoolean("isPing")) {
+                        result.append("  Result:  Ping acknowledged by server\n");
+                    }
+                } catch (Exception ignored) {}
+
+                PaymentNotificationListenerService.addLog("DIAGNOSTICS Phase 2: HTTP " + code + " (" + latency + "ms) — Auth " + (code == 200 ? "OK" : "FAIL"));
+
+                // Final verdict
+                result.append("\n");
+                if (code == 200) {
+                    result.append("RESULT: All systems operational. Ready for live payments.");
+                } else if (code == 401) {
+                    result.append("RESULT: Authentication rejected. Check webhook secret key.");
+                } else {
+                    result.append("RESULT: Server responded with HTTP ").append(code).append(". Check server logs.");
+                }
+            } catch (Exception e) {
+                result.append("Phase 2 — Authenticated POST\n");
+                result.append("  FAILED: ").append(e.getMessage()).append("\n\n");
+                result.append("RESULT: Cannot reach server. Check internet connection.");
+                PaymentNotificationListenerService.addLog("DIAGNOSTICS Phase 2 FAILED: " + e.getMessage());
+            }
+
+            final String output = result.toString();
+            runOnUiThread(() -> {
+                tvConnectionResult.setText(output);
+                btnTestConnection.setEnabled(true);
+                btnTestConnection.setText("Run Connection Diagnostics");
+            });
+        }).start();
     }
 
     @Override
@@ -105,18 +247,20 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         boolean isNotificationAccessGranted = isNotificationServiceEnabled();
 
         if (isNotificationAccessGranted) {
-            tvStatus.setText("● LISTENER ACTIVE & RUNNING");
-            tvStatus.setTextColor(Color.parseColor("#065F46"));
-            statusCard.setBackgroundColor(Color.parseColor("#D1FAE5"));
-            tvStatusDesc.setText("Actively capturing Paytm / UPI payment notifications and pushing to srcjdcoem.in");
-            tvStatusDesc.setTextColor(Color.parseColor("#047857"));
+            tvStatus.setText("Listener Active");
+            tvStatus.setTextColor(Color.parseColor("#166534"));
+            tvStatusDesc.setText("Capturing Paytm, GPay, PhonePe and SMS notifications");
+            tvStatusDesc.setTextColor(Color.parseColor("#15803D"));
+            statusCard.setBackgroundResource(R.drawable.card_status_active);
+            statusDot.setBackgroundResource(R.drawable.dot_green);
             btnGrantPermission.setVisibility(View.GONE);
         } else {
-            tvStatus.setText("⚠ NOTIFICATION ACCESS REQUIRED");
+            tvStatus.setText("Notification Access Required");
             tvStatus.setTextColor(Color.parseColor("#991B1B"));
-            statusCard.setBackgroundColor(Color.parseColor("#FEE2E2"));
-            tvStatusDesc.setText("Tap the button below to grant notification access so the app can detect payments.");
+            tvStatusDesc.setText("Tap the button below to grant notification access");
             tvStatusDesc.setTextColor(Color.parseColor("#B91C1C"));
+            statusCard.setBackgroundResource(R.drawable.card_status_error);
+            statusDot.setBackgroundResource(R.drawable.dot_red);
             btnGrantPermission.setVisibility(View.VISIBLE);
         }
 
@@ -124,12 +268,15 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) {
-                btnBatteryOpt.setText("✓ Battery Optimization Disabled (Safe in Background)");
+                btnBatteryOpt.setText("Battery Optimization Disabled");
                 btnBatteryOpt.setEnabled(false);
-                btnBatteryOpt.setTextColor(Color.parseColor("#047857"));
+                btnBatteryOpt.setTextColor(Color.parseColor("#166534"));
+                btnBatteryOpt.setBackgroundResource(R.drawable.btn_green);
             } else {
-                btnBatteryOpt.setText("Disable Battery Optimization (Recommended)");
+                btnBatteryOpt.setText("Disable Battery Optimization");
                 btnBatteryOpt.setEnabled(true);
+                btnBatteryOpt.setTextColor(Color.parseColor("#17458F"));
+                btnBatteryOpt.setBackgroundResource(R.drawable.btn_secondary);
             }
         }
     }
@@ -152,11 +299,11 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
     private void updateLogsView() {
         List<String> logs = PaymentNotificationListenerService.LOG_BUFFER;
         if (logs.isEmpty()) {
-            tvLogs.setText("Ready and listening for notifications...\nWebhook: " + PaymentNotificationListenerService.WEBHOOK_URL);
+            tvLogs.setText("Waiting for notifications...\n\nWebhook: " + PaymentNotificationListenerService.WEBHOOK_URL);
         } else {
             StringBuilder sb = new StringBuilder();
-            for (String line : logs) {
-                sb.append(line).append("\n\n");
+            for (String logLine : logs) {
+                sb.append(logLine).append("\n\n");
             }
             tvLogs.setText(sb.toString());
         }

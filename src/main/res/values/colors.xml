@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SRC Brand Colors -->
+    <color name="src_navy">#17458F</color>
+    <color name="src_navy_dark">#0F2D5E</color>
+    <color name="src_orange">#E78023</color>
+    <color name="src_orange_light">#FFF7ED</color>
+
+    <!-- Surface & Text -->
+    <color name="surface_bg">#F1F5F9</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="text_primary">#0F172A</color>
+    <color name="text_secondary">#334155</color>
+    <color name="text_muted">#64748B</color>
+    <color name="text_subtle">#94A3B8</color>
+
+    <!-- Status colors -->
+    <color name="status_green">#22C55E</color>
+    <color name="status_green_text">#166534</color>
+    <color name="status_green_bg">#F0FDF4</color>
+    <color name="status_red">#EF4444</color>
+    <color name="status_red_text">#991B1B</color>
+    <color name="status_red_bg">#FEF2F2</color>
+
+    <!-- Log terminal -->
+    <color name="log_bg">#0F172A</color>
+    <color name="log_text">#94A3B8</color>
+    <color name="log_text_bright">#E2E8F0</color>
+</resources>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SRC PayHook: Adaptive foreground icon layer -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Background fill -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#17458F" />
+        </shape>
+    </item>
+
+    <!-- Accent ring -->
+    <item
+        android:left="8dp"
+        android:top="8dp"
+        android:right="8dp"
+        android:bottom="8dp">
+        <shape android:shape="oval">
+            <stroke android:width="2dp" android:color="#E78023" />
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+
+    <!-- Shield center -->
+    <item
+        android:left="30dp"
+        android:top="24dp"
+        android:right="30dp"
+        android:bottom="26dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+
+    <!-- Bolt accent -->
+    <item
+        android:left="46dp"
+        android:top="38dp"
+        android:right="46dp"
+        android:bottom="42dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#E78023" />
+            <corners android:radius="4dp" />
+        </shape>
+    </item>
+
+</layer-list>
