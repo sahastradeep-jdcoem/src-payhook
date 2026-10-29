@@ -43,7 +43,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="v1.2"
+                    android:text="v1.3"
                     android:textSize="11sp"
                     android:textColor="#FFFFFF"
                     android:background="@drawable/badge_orange"
@@ -113,7 +113,7 @@
                         android:id="@+id/tvStatusDesc"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Capturing Paytm, GPay, PhonePe and SMS notifications"
+                        android:text="Filtering strictly for selected payment apps"
                         android:textSize="12sp"
                         android:textColor="#15803D"
                         android:layout_marginTop="2dp" />
@@ -211,7 +211,143 @@
 
 
             <!-- ──────────────────────────────────────────────── -->
-            <!-- CARD 3: Test & Diagnostics                        -->
+            <!-- CARD 3: Target Payment Apps Filter                -->
+            <!-- ──────────────────────────────────────────────── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="6dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="MONITORED PAYMENT APPS"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="#64748B"
+                        android:letterSpacing="0.08" />
+
+                    <TextView
+                        android:id="@+id/tvActiveAppsCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Active"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:textColor="#166534"
+                        android:background="@drawable/badge_green"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:paddingTop="2dp"
+                        android:paddingBottom="2dp" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Select only the apps you receive festival payments on. Promotional and shopping alerts (Meesho, Amazon, WhatsApp) are strictly ignored."
+                    android:textSize="11sp"
+                    android:textColor="#64748B"
+                    android:lineSpacingExtra="2dp"
+                    android:layout_marginBottom="10dp" />
+
+                <!-- Checkbox 1: Paytm for Business -->
+                <CheckBox
+                    android:id="@+id/cbPaytmBiz"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Paytm for Business (Merchant Soundbox / QR)"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#0F172A"
+                    android:checked="true"
+                    android:buttonTint="#17458F"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp" />
+
+                <!-- Checkbox 2: Paytm Personal -->
+                <CheckBox
+                    android:id="@+id/cbPaytmPersonal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Paytm Personal UPI"
+                    android:textSize="13sp"
+                    android:textColor="#334155"
+                    android:checked="true"
+                    android:buttonTint="#17458F"
+                    android:paddingTop="3dp"
+                    android:paddingBottom="3dp" />
+
+                <!-- Checkbox 3: PhonePe -->
+                <CheckBox
+                    android:id="@+id/cbPhonePe"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="PhonePe (Personal &amp; Business)"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#0F172A"
+                    android:checked="true"
+                    android:buttonTint="#17458F"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp" />
+
+                <!-- Checkbox 4: Google Pay -->
+                <CheckBox
+                    android:id="@+id/cbGPay"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Google Pay (GPay &amp; Business)"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#0F172A"
+                    android:checked="true"
+                    android:buttonTint="#17458F"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp" />
+
+                <!-- Checkbox 5: Bank SMS -->
+                <CheckBox
+                    android:id="@+id/cbBankSms"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Bank SMS &amp; Default Messages"
+                    android:textSize="13sp"
+                    android:textColor="#334155"
+                    android:checked="true"
+                    android:buttonTint="#17458F"
+                    android:paddingTop="3dp"
+                    android:paddingBottom="3dp" />
+
+                <!-- Checkbox 6: BHIM / Other UPI -->
+                <CheckBox
+                    android:id="@+id/cbBhim"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="BHIM &amp; Other Bank UPI Apps"
+                    android:textSize="13sp"
+                    android:textColor="#334155"
+                    android:checked="true"
+                    android:buttonTint="#17458F"
+                    android:paddingTop="3dp"
+                    android:paddingBottom="3dp" />
+
+            </LinearLayout>
+
+
+            <!-- ──────────────────────────────────────────────── -->
+            <!-- CARD 4: Test & Diagnostics                        -->
             <!-- ──────────────────────────────────────────────── -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -282,7 +418,7 @@
 
 
             <!-- ──────────────────────────────────────────────── -->
-            <!-- CARD 4: Activity Logs (Terminal Style)            -->
+            <!-- CARD 5: Activity Logs (Terminal Style)            -->
             <!-- ──────────────────────────────────────────────── -->
             <LinearLayout
                 android:layout_width="match_parent"

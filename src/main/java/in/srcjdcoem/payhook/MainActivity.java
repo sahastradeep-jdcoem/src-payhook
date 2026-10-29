@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -13,6 +14,8 @@ import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -34,6 +37,15 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
     private Button btnTestPing;
     private Button btnClearLogs;
     private TextView tvLogs;
+
+    // Payment App Filter Controls
+    private CheckBox cbPaytmBiz;
+    private CheckBox cbPaytmPersonal;
+    private CheckBox cbPhonePe;
+    private CheckBox cbGPay;
+    private CheckBox cbBankSms;
+    private CheckBox cbBhim;
+    private TextView tvActiveAppsCount;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,6 +69,17 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         btnTestPing = findViewById(R.id.btnTestPing);
         btnClearLogs = findViewById(R.id.btnClearLogs);
         tvLogs = findViewById(R.id.tvLogs);
+
+        // App Filter Checkboxes
+        cbPaytmBiz = findViewById(R.id.cbPaytmBiz);
+        cbPaytmPersonal = findViewById(R.id.cbPaytmPersonal);
+        cbPhonePe = findViewById(R.id.cbPhonePe);
+        cbGPay = findViewById(R.id.cbGPay);
+        cbBankSms = findViewById(R.id.cbBankSms);
+        cbBhim = findViewById(R.id.cbBhim);
+        tvActiveAppsCount = findViewById(R.id.tvActiveAppsCount);
+
+        setupAppFilters();
 
         btnOpenAppInfo.setOnClickListener(this);
         btnGrantPermission.setOnClickListener(this);
@@ -114,6 +137,59 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
             PaymentNotificationListenerService.LOG_BUFFER.clear();
             updateLogsView();
             Toast.makeText(MainActivity.this, "Logs cleared.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Initializes and binds checkboxes for monitored payment apps.
+     * Persists user preferences to SharedPreferences.
+     */
+    private void setupAppFilters() {
+        SharedPreferences prefs = getSharedPreferences(
+            PaymentNotificationListenerService.PREFS_NAME,
+            Context.MODE_PRIVATE
+        );
+
+        setupCheckbox(cbPaytmBiz, prefs, PaymentNotificationListenerService.KEY_PAYTM_BIZ, "Paytm Business");
+        setupCheckbox(cbPaytmPersonal, prefs, PaymentNotificationListenerService.KEY_PAYTM_PERSONAL, "Paytm Personal");
+        setupCheckbox(cbPhonePe, prefs, PaymentNotificationListenerService.KEY_PHONEPE, "PhonePe");
+        setupCheckbox(cbGPay, prefs, PaymentNotificationListenerService.KEY_GPAY, "Google Pay");
+        setupCheckbox(cbBankSms, prefs, PaymentNotificationListenerService.KEY_BANK_SMS, "Bank SMS");
+        setupCheckbox(cbBhim, prefs, PaymentNotificationListenerService.KEY_BHIM, "BHIM UPI");
+
+        updateActiveAppsCount();
+    }
+
+    private void setupCheckbox(CheckBox cb, SharedPreferences prefs, String prefKey, String label) {
+        if (cb == null) return;
+        boolean isEnabled = prefs.getBoolean(prefKey, true);
+        cb.setChecked(isEnabled);
+
+        cb.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> {
+            prefs.edit().putBoolean(prefKey, isChecked).apply();
+            updateActiveAppsCount();
+            PaymentNotificationListenerService.addLog(
+                "Filter: " + label + " " + (isChecked ? "ENABLED" : "DISABLED")
+            );
+        });
+    }
+
+    private void updateActiveAppsCount() {
+        if (tvActiveAppsCount == null) return;
+
+        int count = 0;
+        if (cbPaytmBiz != null && cbPaytmBiz.isChecked()) count++;
+        if (cbPaytmPersonal != null && cbPaytmPersonal.isChecked()) count++;
+        if (cbPhonePe != null && cbPhonePe.isChecked()) count++;
+        if (cbGPay != null && cbGPay.isChecked()) count++;
+        if (cbBankSms != null && cbBankSms.isChecked()) count++;
+        if (cbBhim != null && cbBhim.isChecked()) count++;
+
+        tvActiveAppsCount.setText(count + "/6 Active");
+        if (count == 0) {
+            tvActiveAppsCount.setTextColor(Color.parseColor("#B91C1C"));
+        } else {
+            tvActiveAppsCount.setTextColor(Color.parseColor("#166534"));
         }
     }
 

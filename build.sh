@@ -24,6 +24,8 @@ echo "=== 2. Linking resources and generating R.java ==="
 "$AAPT2" link "$BUILD_DIR/compiled_res/resources.zip" \
   -I "$ANDROID_JAR" \
   --manifest "$PROJECT_DIR/src/main/AndroidManifest.xml" \
+  --version-code 3 \
+  --version-name "1.3" \
   --min-sdk-version 26 \
   --target-sdk-version 34 \
   --java "$BUILD_DIR/gen" \
