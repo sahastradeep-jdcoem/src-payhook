@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+VERSION_NAME="1.3"
+VERSION_CODE=3
+OUTPUT_APK_NAME="src-payhook-v${VERSION_NAME}.apk"
+
 SDK_ROOT="$HOME/Library/Android/sdk"
 BUILD_TOOLS="$SDK_ROOT/build-tools/34.0.0"
 PLATFORM="$SDK_ROOT/platforms/android-34"
@@ -12,6 +16,7 @@ APKSIGNER="$BUILD_TOOLS/apksigner"
 ANDROID_JAR="$PLATFORM/android.jar"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WEB_PUBLIC_DOWNLOAD="$(cd "$PROJECT_DIR/../public/download" 2>/dev/null && pwd || true)"
 BUILD_DIR="$PROJECT_DIR/build"
 
 rm -rf "$BUILD_DIR"
@@ -20,12 +25,12 @@ mkdir -p "$BUILD_DIR/compiled_res" "$BUILD_DIR/gen" "$BUILD_DIR/classes"
 echo "=== 1. Compiling resources with AAPT2 ==="
 "$AAPT2" compile --dir "$PROJECT_DIR/src/main/res" -o "$BUILD_DIR/compiled_res/resources.zip"
 
-echo "=== 2. Linking resources and generating R.java ==="
+echo "=== 2. Linking resources and generating R.java (v${VERSION_NAME}) ==="
 "$AAPT2" link "$BUILD_DIR/compiled_res/resources.zip" \
   -I "$ANDROID_JAR" \
   --manifest "$PROJECT_DIR/src/main/AndroidManifest.xml" \
-  --version-code 3 \
-  --version-name "1.3" \
+  --version-code "$VERSION_CODE" \
+  --version-name "$VERSION_NAME" \
   --min-sdk-version 26 \
   --target-sdk-version 34 \
   --java "$BUILD_DIR/gen" \
@@ -65,9 +70,18 @@ if [ ! -f "$KEYSTORE" ]; then
 fi
 
 "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:srcjdcoem2026 --key-pass pass:srcjdcoem2026 \
-  --out "$PROJECT_DIR/src-payhook-release.apk" "$BUILD_DIR/src-payhook-unsigned.apk"
+  --out "$PROJECT_DIR/$OUTPUT_APK_NAME" "$BUILD_DIR/src-payhook-unsigned.apk"
 
-"$APKSIGNER" verify "$PROJECT_DIR/src-payhook-release.apk"
+"$APKSIGNER" verify "$PROJECT_DIR/$OUTPUT_APK_NAME"
 
-echo "SUCCESS! Production APK generated at: $PROJECT_DIR/src-payhook-release.apk"
-ls -lh "$PROJECT_DIR/src-payhook-release.apk"
+# Also maintain standard release alias and copy to web public/download
+cp -f "$PROJECT_DIR/$OUTPUT_APK_NAME" "$PROJECT_DIR/src-payhook-release.apk"
+
+if [ -d "$WEB_PUBLIC_DOWNLOAD" ]; then
+  cp -f "$PROJECT_DIR/$OUTPUT_APK_NAME" "$WEB_PUBLIC_DOWNLOAD/$OUTPUT_APK_NAME"
+  cp -f "$PROJECT_DIR/$OUTPUT_APK_NAME" "$WEB_PUBLIC_DOWNLOAD/src-payhook-release.apk"
+  echo "Synchronized versioned APK to: $WEB_PUBLIC_DOWNLOAD/$OUTPUT_APK_NAME"
+fi
+
+echo "SUCCESS! Production APK generated at: $PROJECT_DIR/$OUTPUT_APK_NAME"
+ls -lh "$PROJECT_DIR/$OUTPUT_APK_NAME"
