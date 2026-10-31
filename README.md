@@ -20,7 +20,7 @@ It captures instant payment notifications from **Paytm for Business**, **Paytm**
 ## 📲 Download & Installation
 
 1. Download the pre-built signed APK:
-   - **[Download src-payhook-v1.3.apk](https://www.srcjdcoem.in/download/src-payhook-v1.3.apk)** (Latest v1.3 release)
+   - **[Download src-payhook-v1.4.apk](https://www.srcjdcoem.in/download/src-payhook-v1.4.apk)** (Latest v1.4 release)
 2. Install the APK on the Android device associated with the festival UPI receiver account.
 3. Open the app:
    - Tap **"Grant Notification Access"** to toggle ON `SRC PayHook` in Android Settings.

@@ -1,8 +1,15 @@
 package in.srcjdcoem.payhook;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.os.Build;
@@ -26,6 +33,8 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     private static final String TAG = "SRCPayHook";
     public static final String WEBHOOK_URL = "https://www.srcjdcoem.in/api/upi/webhook?secret=SRC_UPI_2026_GATEWAY";
     public static final String SECRET_KEY = "SRC_UPI_2026_GATEWAY";
+    public static final String FOREGROUND_CHANNEL_ID = "src_payhook_listener";
+    private static final int FOREGROUND_NOTIFICATION_ID = 1001;
 
     // SharedPreferences Keys for App Filtering
     public static final String PREFS_NAME = "src_payhook_prefs";
@@ -36,8 +45,10 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     public static final String KEY_BANK_SMS = "pref_bank_sms";
     public static final String KEY_BHIM = "pref_bhim";
 
-    // Application context holder for sensory feedback and background workers
+    // Application context and connection status
     public static volatile Context appContext = null;
+    public static volatile boolean isServiceConnected = false;
+    public static volatile PaymentNotificationListenerService instance = null;
 
     // In-memory LRU deduplication cache: drops identical notification updates within 30 seconds
     private static final Map<String, Long> RECENT_NOTIFICATIONS = new LinkedHashMap<String, Long>(50, 0.75f, true) {
@@ -90,37 +101,83 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         boolean allowBankSms = prefs == null || prefs.getBoolean(KEY_BANK_SMS, true);
         boolean allowBhim = prefs == null || prefs.getBoolean(KEY_BHIM, true);
 
-        // 1. Paytm for Business
-        if (allowPaytmBiz && (pkg.contains("com.paytm.business") || (pkg.contains("paytm") && pkg.contains("merchant")))) {
+        // 1. Paytm (Business & Personal)
+        if ((allowPaytmBiz || allowPaytmPersonal) && pkg.contains("paytm")) {
             return true;
         }
 
-        // 2. Paytm Personal
-        if (allowPaytmPersonal && (pkg.contains("net.one97.paytm") || (pkg.contains("paytm") && !pkg.contains("business")))) {
-            return true;
-        }
-
-        // 3. PhonePe (Personal & Merchant)
+        // 2. PhonePe (Personal & Merchant)
         if (allowPhonePe && pkg.contains("phonepe")) {
             return true;
         }
 
-        // 4. Google Pay (GPay)
+        // 3. Google Pay (GPay)
         if (allowGPay && (pkg.contains("paisa") || (pkg.contains("google") && pkg.contains("pay")))) {
             return true;
         }
 
-        // 5. Bank SMS & Messages
-        if (allowBankSms && (pkg.contains("messaging") || pkg.contains("mms") || pkg.contains("sms") || pkg.contains("message"))) {
+        // 4. Bank SMS, Messaging & Truecaller Alerts
+        if (allowBankSms && (pkg.contains("messaging") || 
+                             pkg.contains("mms") || 
+                             pkg.contains("sms") || 
+                             pkg.contains("message") || 
+                             pkg.contains("truecaller"))) {
             return true;
         }
 
-        // 6. BHIM & NPCI UPI Apps
+        // 5. BHIM & NPCI UPI Apps
         if (allowBhim && (pkg.contains("npci") || pkg.contains("bhim") || pkg.contains("upi"))) {
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * Extracts text comprehensively from all known notification fields.
+     */
+    public static String extractAllNotificationText(Notification notification) {
+        if (notification == null) return "";
+        StringBuilder sb = new StringBuilder();
+
+        if (notification.tickerText != null) {
+            sb.append(notification.tickerText).append(" ");
+        }
+
+        Bundle extras = notification.extras;
+        if (extras != null) {
+            String[] keys = new String[]{
+                Notification.EXTRA_TITLE,
+                Notification.EXTRA_TITLE_BIG,
+                Notification.EXTRA_TEXT,
+                Notification.EXTRA_BIG_TEXT,
+                Notification.EXTRA_SUB_TEXT,
+                Notification.EXTRA_INFO_TEXT,
+                Notification.EXTRA_SUMMARY_TEXT
+            };
+
+            for (String key : keys) {
+                try {
+                    CharSequence cs = extras.getCharSequence(key);
+                    if (cs != null && cs.length() > 0) {
+                        sb.append(cs).append(" ");
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            try {
+                CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+                if (lines != null) {
+                    for (CharSequence line : lines) {
+                        if (line != null && line.length() > 0) {
+                            sb.append(line).append(" ");
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        return sb.toString().trim();
     }
 
     /**
@@ -203,27 +260,140 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         }
     }
 
+    /**
+     * Forces Android OS to reconnect/rebind to this NotificationListenerService if disconnected.
+     */
+    public static void tryForceRebind(Context context) {
+        if (context == null) return;
+        ComponentName componentName = new ComponentName(context, PaymentNotificationListenerService.class);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                NotificationListenerService.requestRebind(componentName);
+                Log.d(TAG, "NotificationListenerService.requestRebind() requested.");
+            } catch (Exception e) {
+                Log.w(TAG, "requestRebind failed: " + e.getMessage());
+            }
+        }
+
+        try {
+            PackageManager pm = context.getPackageManager();
+            pm.setComponentEnabledSetting(componentName,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+            pm.setComponentEnabledSetting(componentName,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+            Log.d(TAG, "Component enabled state toggled for rebind.");
+        } catch (Exception e) {
+            Log.w(TAG, "Component toggle failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Starts persistent foreground notification to ensure Samsung / Xiaomi OS never kills service.
+     */
+    private void startForegroundNotification() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(
+                    FOREGROUND_CHANNEL_ID,
+                    "SRC PayHook Live Listener",
+                    NotificationManager.IMPORTANCE_LOW
+                );
+                channel.setDescription("Maintains background UPI payment listening for festival desks");
+                NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm != null) {
+                    nm.createNotificationChannel(channel);
+                }
+            }
+
+            Intent notifIntent = new Intent(this, MainActivity.class);
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                notifIntent,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0
+            );
+
+            Notification.Builder builder;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder = new Notification.Builder(this, FOREGROUND_CHANNEL_ID);
+            } else {
+                builder = new Notification.Builder(this);
+            }
+
+            Notification notification = builder
+                .setContentTitle("SRC PayHook Active")
+                .setContentText("Monitoring Paytm, PhonePe, GPay & SMS in real time")
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .build();
+
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            } else {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Foreground notification start notice: " + e.getMessage());
+        }
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
         appContext = getApplicationContext();
+        instance = this;
+        startForegroundNotification();
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        startForegroundNotification();
+        return START_STICKY;
     }
 
     @Override
     public void onListenerConnected() {
         super.onListenerConnected();
         appContext = getApplicationContext();
-        addLog("Service connected and listening for payments.");
+        isServiceConnected = true;
+        instance = this;
+        startForegroundNotification();
+        addLog("Listener connected & monitoring payments in real time.");
+
+        // Scan any unforwarded active payment notifications already in the status bar tray
+        try {
+            StatusBarNotification[] active = getActiveNotifications();
+            if (active != null && active.length > 0) {
+                for (StatusBarNotification sbn : active) {
+                    if (sbn != null) {
+                        processNotification(sbn, true);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Tray backlog scan note: " + e.getMessage());
+        }
     }
 
     @Override
     public void onListenerDisconnected() {
         super.onListenerDisconnected();
-        addLog("Service disconnected.");
+        isServiceConnected = false;
+        instance = null;
+        addLog("WARNING: System disconnected listener. Requesting rebind...");
+        tryForceRebind(this);
     }
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
+        processNotification(sbn, false);
+    }
+
+    private void processNotification(StatusBarNotification sbn, boolean isBacklogScan) {
         if (sbn == null || sbn.getNotification() == null) return;
 
         try {
@@ -232,30 +402,19 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
 
             // 1. Check user app filter: Is this package allowed?
             if (!isPackageAllowed(this, packageName)) {
-                // Silently ignore non-payment apps (Meesho, WhatsApp, Amazon, YouTube, etc.)
                 return;
             }
 
-            Bundle extras = sbn.getNotification().extras;
-            if (extras == null) return;
-
-            CharSequence titleSeq = extras.getCharSequence(Notification.EXTRA_TITLE);
-            CharSequence textSeq = extras.getCharSequence(Notification.EXTRA_TEXT);
-            CharSequence bigTextSeq = extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
-
-            String title = titleSeq != null ? titleSeq.toString() : "";
-            String text = textSeq != null ? textSeq.toString() : "";
-            String bigText = bigTextSeq != null ? bigTextSeq.toString() : "";
-
-            String combinedText = (title + " " + text + " " + (bigText.isEmpty() ? "" : bigText)).trim();
+            // 2. Extract comprehensive text from all possible notification fields
+            String combinedText = extractAllNotificationText(sbn.getNotification());
             if (combinedText.isEmpty()) return;
 
-            // 2. Check genuine payment criteria: Exclude shopping promotions and ensure real payment receipt terms
+            // 3. Verify genuine payment criteria: Exclude shopping promotions and ensure real payment receipt terms
             if (!isGenuinePaymentReceipt(combinedText)) {
                 return;
             }
 
-            // 3. Local deduplication: Drop identical notifications fired within 30s (Android banner updates / re-posts)
+            // 4. Local deduplication: Drop identical notifications fired within 30s (Android banner updates / re-posts)
             String dedupKey = packageName + "::" + combinedText.replaceAll("\\s+", " ").trim();
             long now = System.currentTimeMillis();
             synchronized (RECENT_NOTIFICATIONS) {
@@ -267,7 +426,8 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
                 RECENT_NOTIFICATIONS.put(dedupKey, now);
             }
 
-            addLog("Payment notification intercepted from " + packageName + ": " + (combinedText.length() > 60 ? combinedText.substring(0, 60) + "..." : combinedText));
+            String preview = combinedText.length() > 65 ? combinedText.substring(0, 65) + "..." : combinedText;
+            addLog("Payment notification intercepted from " + packageName + ": " + preview);
             forwardNotificationAsync(combinedText, packageName);
 
         } catch (Exception e) {

@@ -32,6 +32,7 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
     private Button btnOpenAppInfo;
     private Button btnGrantPermission;
     private Button btnBatteryOpt;
+    private Button btnRebindListener;
     private Button btnTestConnection;
     private TextView tvConnectionResult;
     private Button btnTestPing;
@@ -64,6 +65,7 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         btnOpenAppInfo = findViewById(R.id.btnOpenAppInfo);
         btnGrantPermission = findViewById(R.id.btnGrantPermission);
         btnBatteryOpt = findViewById(R.id.btnBatteryOpt);
+        btnRebindListener = findViewById(R.id.btnRebindListener);
         btnTestConnection = findViewById(R.id.btnTestConnection);
         tvConnectionResult = findViewById(R.id.tvConnectionResult);
         btnTestPing = findViewById(R.id.btnTestPing);
@@ -84,6 +86,7 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         btnOpenAppInfo.setOnClickListener(this);
         btnGrantPermission.setOnClickListener(this);
         btnBatteryOpt.setOnClickListener(this);
+        btnRebindListener.setOnClickListener(this);
         btnTestConnection.setOnClickListener(this);
         btnTestPing.setOnClickListener(this);
         btnClearLogs.setOnClickListener(this);
@@ -123,6 +126,11 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
                     } catch (Exception ignored) {}
                 }
             }
+        } else if (id == R.id.btnRebindListener) {
+            PaymentNotificationListenerService.tryForceRebind(MainActivity.this);
+            PaymentNotificationListenerService.addLog("Rebind triggered: Reconnecting listener service...");
+            Toast.makeText(MainActivity.this, "Rebind requested from Android system.", Toast.LENGTH_SHORT).show();
+            checkPermissionsAndStatus();
         } else if (id == R.id.btnTestConnection) {
             runConnectionDiagnostics();
         } else if (id == R.id.btnTestPing) {
@@ -339,14 +347,40 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         boolean isNotificationAccessGranted = isNotificationServiceEnabled();
 
         if (isNotificationAccessGranted) {
-            tvStatus.setText("Listener Active");
-            tvStatus.setTextColor(Color.parseColor("#166534"));
-            tvStatusDesc.setText("Capturing Paytm, GPay, PhonePe and SMS notifications");
-            tvStatusDesc.setTextColor(Color.parseColor("#15803D"));
-            statusCard.setBackgroundResource(R.drawable.card_status_active);
-            statusDot.setBackgroundResource(R.drawable.dot_green);
+            // Auto-rebind in background if not yet connected
+            if (!PaymentNotificationListenerService.isServiceConnected) {
+                PaymentNotificationListenerService.tryForceRebind(this);
+            }
 
-            // Hide permission buttons once active
+            // Start or maintain foreground service
+            try {
+                Intent sIntent = new Intent(this, PaymentNotificationListenerService.class);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(sIntent);
+                } else {
+                    startService(sIntent);
+                }
+            } catch (Exception ignored) {}
+
+            boolean isConnected = PaymentNotificationListenerService.isServiceConnected;
+
+            if (isConnected) {
+                tvStatus.setText("Listener Active & Monitoring");
+                tvStatus.setTextColor(Color.parseColor("#166534"));
+                tvStatusDesc.setText("Capturing Paytm, PhonePe, GPay, SMS & Truecaller in real time");
+                tvStatusDesc.setTextColor(Color.parseColor("#15803D"));
+                statusCard.setBackgroundResource(R.drawable.card_status_active);
+                statusDot.setBackgroundResource(R.drawable.dot_green);
+            } else {
+                tvStatus.setText("Connecting Listener...");
+                tvStatus.setTextColor(Color.parseColor("#9A3412"));
+                tvStatusDesc.setText("Waiting for Android Binder connection. Tap 'Reconnect' below if paused.");
+                tvStatusDesc.setTextColor(Color.parseColor("#C2410C"));
+                statusCard.setBackgroundResource(R.drawable.card_guide);
+                statusDot.setBackgroundResource(R.drawable.dot_red);
+            }
+
+            // Hide initial setup permission buttons once active
             layoutRestrictedNotice.setVisibility(View.GONE);
             btnOpenAppInfo.setVisibility(View.GONE);
             btnGrantPermission.setVisibility(View.GONE);

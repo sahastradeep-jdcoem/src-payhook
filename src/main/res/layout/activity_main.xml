@@ -43,7 +43,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="v1.3"
+                    android:text="v1.4"
                     android:textSize="11sp"
                     android:textColor="#FFFFFF"
                     android:background="@drawable/badge_orange"
@@ -206,6 +206,19 @@
                     android:textSize="14sp"
                     android:textColor="#17458F"
                     android:background="@drawable/btn_secondary"
+                    android:textAllCaps="false"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Reconnect / Rebind Listener Button -->
+                <Button
+                    android:id="@+id/btnRebindListener"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:text="Reconnect / Rebind Listener"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#17458F"
+                    android:background="@drawable/btn_secondary"
                     android:textAllCaps="false" />
             </LinearLayout>
 
@@ -322,7 +335,7 @@
                     android:id="@+id/cbBankSms"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Bank SMS &amp; Default Messages"
+                    android:text="Bank SMS, Messages &amp; Truecaller"
                     android:textSize="13sp"
                     android:textColor="#334155"
                     android:checked="true"
