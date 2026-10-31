@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-VERSION_NAME="1.4"
-VERSION_CODE=4
+VERSION_NAME="1.5"
+VERSION_CODE=5
 OUTPUT_APK_NAME="src-payhook-v${VERSION_NAME}.apk"
 
 SDK_ROOT="$HOME/Library/Android/sdk"
@@ -39,10 +39,11 @@ echo "=== 2. Linking resources and generating R.java (v${VERSION_NAME}) ==="
 echo "=== 3. Compiling Java sources ==="
 javac -encoding UTF-8 \
   --release 8 \
-  -g:none \
+  -g:lines,source \
   -cp "$ANDROID_JAR:$BUILD_DIR/gen" \
   -d "$BUILD_DIR/classes" \
   "$BUILD_DIR/gen/in/srcjdcoem/payhook/R.java" \
+  "$PROJECT_DIR/src/main/java/in/srcjdcoem/payhook/BootReceiver.java" \
   "$PROJECT_DIR/src/main/java/in/srcjdcoem/payhook/HttpPostWorker.java" \
   "$PROJECT_DIR/src/main/java/in/srcjdcoem/payhook/PaymentNotificationListenerService.java" \
   "$PROJECT_DIR/src/main/java/in/srcjdcoem/payhook/MainActivity.java"

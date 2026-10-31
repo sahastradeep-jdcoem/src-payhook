@@ -333,6 +333,7 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
         PaymentNotificationListenerService.activeMainActivity = this;
         checkPermissionsAndStatus();
         updateLogsView();
+        HttpPostWorker.triggerOutboxFlush();
     }
 
     @Override
@@ -363,16 +364,18 @@ public class MainActivity extends Activity implements View.OnClickListener, Runn
             } catch (Exception ignored) {}
 
             boolean isConnected = PaymentNotificationListenerService.isServiceConnected;
+            int pendingOutbox = PaymentNotificationListenerService.getOutboxCount(this);
 
             if (isConnected) {
-                tvStatus.setText("Listener Active & Monitoring");
+                String queueNote = pendingOutbox > 0 ? " (" + pendingOutbox + " queued)" : "";
+                tvStatus.setText("Listener Active & Monitoring (v1.5)" + queueNote);
                 tvStatus.setTextColor(Color.parseColor("#166534"));
-                tvStatusDesc.setText("Capturing Paytm, PhonePe, GPay, SMS & Truecaller in real time");
+                tvStatusDesc.setText("Capturing Paytm, PhonePe, GPay, SMS & Bank apps in real time");
                 tvStatusDesc.setTextColor(Color.parseColor("#15803D"));
                 statusCard.setBackgroundResource(R.drawable.card_status_active);
                 statusDot.setBackgroundResource(R.drawable.dot_green);
             } else {
-                tvStatus.setText("Connecting Listener...");
+                tvStatus.setText("Connecting Listener (v1.5)...");
                 tvStatus.setTextColor(Color.parseColor("#9A3412"));
                 tvStatusDesc.setText("Waiting for Android Binder connection. Tap 'Reconnect' below if paused.");
                 tvStatusDesc.setTextColor(Color.parseColor("#C2410C"));

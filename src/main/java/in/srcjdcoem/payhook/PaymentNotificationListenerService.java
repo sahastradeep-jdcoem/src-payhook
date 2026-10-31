@@ -14,11 +14,16 @@ import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -27,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 public class PaymentNotificationListenerService extends NotificationListenerService {
 
@@ -36,8 +42,9 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     public static final String FOREGROUND_CHANNEL_ID = "src_payhook_listener";
     private static final int FOREGROUND_NOTIFICATION_ID = 1001;
 
-    // SharedPreferences Keys for App Filtering
+    // SharedPreferences Keys for App Filtering & Persistent Outbox Queue
     public static final String PREFS_NAME = "src_payhook_prefs";
+    public static final String PREF_OUTBOX_KEY = "src_payhook_outbox_queue_v1";
     public static final String KEY_PAYTM_BIZ = "pref_paytm_biz";
     public static final String KEY_PAYTM_PERSONAL = "pref_paytm_personal";
     public static final String KEY_PHONEPE = "pref_phonepe";
@@ -50,18 +57,41 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     public static volatile boolean isServiceConnected = false;
     public static volatile PaymentNotificationListenerService instance = null;
 
-    // In-memory LRU deduplication cache: drops identical notification updates within 30 seconds
-    private static final Map<String, Long> RECENT_NOTIFICATIONS = new LinkedHashMap<String, Long>(50, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, Long> eldest) {
-            return size() > 100;
-        }
-    };
-    private static final long DEDUP_WINDOW_MS = 30000; // 30 seconds
+    // In-memory deduplication cache: drops identical notification updates within 20 seconds
+    private static final Map<String, Long> RECENT_NOTIFICATIONS = new LinkedHashMap<String, Long>();
+    private static final long DEDUP_WINDOW_MS = 20000; // 20 seconds
 
     // Circular in-memory log buffer for MainActivity UI
     public static final List<String> LOG_BUFFER = new ArrayList<>();
     public static MainActivity activeMainActivity = null;
+
+    // Periodic Background Status-Bar Tray Poller (every 30s)
+    private Handler trayScanHandler;
+    private TrayScanTask trayScanTask;
+
+    private static class TrayScanTask implements Runnable {
+        private final PaymentNotificationListenerService service;
+
+        TrayScanTask(PaymentNotificationListenerService service) {
+            this.service = service;
+        }
+
+        @Override
+        public void run() {
+            if (service != null) {
+                try {
+                    service.scanActiveTrayNotifications();
+                    HttpPostWorker.triggerOutboxFlush();
+                } catch (Exception e) {
+                    Log.w(TAG, "Tray scanner cycle notice: " + e.getMessage());
+                } finally {
+                    if (service.trayScanHandler != null) {
+                        service.trayScanHandler.postDelayed(this, 30000);
+                    }
+                }
+            }
+        }
+    }
 
     public static synchronized void addLog(String entry) {
         String timestamp = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
@@ -78,9 +108,88 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         }
     }
 
-    /**
-     * Checks if the package is in the user's enabled apps list in SharedPreferences.
-     */
+    // =========================================================================
+    // PERSISTENT OUTBOX QUEUE (ZERO DATA LOSS INVARIANT)
+    // =========================================================================
+
+    public static synchronized void enqueueNotification(Context ctx, String content, String packageName, long postTime) {
+        if (ctx == null) ctx = appContext;
+        if (ctx == null) return;
+        try {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String existingJson = prefs.getString(PREF_OUTBOX_KEY, "[]");
+            JSONArray array = new JSONArray(existingJson);
+
+            // Avoid enqueuing duplicate items with identical text within the queue
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject obj = array.getJSONObject(i);
+                if (content.equals(obj.optString("text")) && packageName.equals(obj.optString("packageName"))) {
+                    return; // Already present in pending outbox
+                }
+            }
+
+            JSONObject item = new JSONObject();
+            item.put("id", UUID.randomUUID().toString());
+            item.put("text", content);
+            item.put("packageName", packageName);
+            item.put("postTime", postTime > 0 ? postTime : System.currentTimeMillis());
+            item.put("enqueuedAt", System.currentTimeMillis());
+            item.put("attempts", 0);
+
+            array.put(item);
+            prefs.edit().putString(PREF_OUTBOX_KEY, array.toString()).apply();
+
+            int pending = array.length();
+            String preview = content.length() > 50 ? content.substring(0, 50) + "..." : content;
+            addLog("QUEUED (" + pending + " in outbox): " + preview);
+
+            // Trigger immediate background sync
+            HttpPostWorker.triggerOutboxFlush();
+        } catch (Exception e) {
+            Log.e(TAG, "Error enqueuing notification to persistent outbox", e);
+        }
+    }
+
+    public static synchronized JSONArray getPendingOutbox(Context ctx) {
+        if (ctx == null) ctx = appContext;
+        if (ctx == null) return new JSONArray();
+        try {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String existingJson = prefs.getString(PREF_OUTBOX_KEY, "[]");
+            return new JSONArray(existingJson);
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    public static synchronized void removeOutboxItem(Context ctx, String id) {
+        if (ctx == null) ctx = appContext;
+        if (ctx == null) return;
+        try {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String existingJson = prefs.getString(PREF_OUTBOX_KEY, "[]");
+            JSONArray array = new JSONArray(existingJson);
+            JSONArray updated = new JSONArray();
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject obj = array.getJSONObject(i);
+                if (!id.equals(obj.optString("id"))) {
+                    updated.put(obj);
+                }
+            }
+            prefs.edit().putString(PREF_OUTBOX_KEY, updated.toString()).apply();
+        } catch (Exception e) {
+            Log.e(TAG, "Error removing outbox item", e);
+        }
+    }
+
+    public static synchronized int getOutboxCount(Context ctx) {
+        return getPendingOutbox(ctx).length();
+    }
+
+    // =========================================================================
+    // ROBUST PACKAGE AND PAYMENT RECEIPT FILTERING
+    // =========================================================================
+
     public static boolean isPackageAllowed(Context ctx, String packageName) {
         if (packageName == null) return false;
         String pkg = packageName.toLowerCase(Locale.ROOT);
@@ -130,12 +239,30 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
             return true;
         }
 
+        // 6. ALL Indian Mobile Banking Apps (Canara, SBI Yono, HDFC, ICICI, Axis, PNB, BoB, etc.)
+        if (pkg.contains("canara") || 
+            pkg.contains("canarabank") || 
+            pkg.contains("sbi") || 
+            pkg.contains("yono") || 
+            pkg.contains("hdfc") || 
+            pkg.contains("icici") || 
+            pkg.contains("axis") || 
+            pkg.contains("kotak") || 
+            pkg.contains("baroda") || 
+            pkg.contains("pnb") || 
+            pkg.contains("unionbank") || 
+            pkg.contains("centralbank") || 
+            pkg.contains("indusind") || 
+            pkg.contains("federalbank") || 
+            pkg.contains("idbi") || 
+            pkg.contains("bank") || 
+            pkg.contains("mobilebanking")) {
+            return true;
+        }
+
         return false;
     }
 
-    /**
-     * Extracts text comprehensively from all known notification fields.
-     */
     public static String extractAllNotificationText(Notification notification) {
         if (notification == null) return "";
         StringBuilder sb = new StringBuilder();
@@ -180,40 +307,39 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         return sb.toString().trim();
     }
 
-    /**
-     * Strictly verifies that the notification is an actual financial credit/receipt alert,
-     * and strictly rejects promotional notifications (Meesho, Amazon, shopping offers).
-     */
     public static boolean isGenuinePaymentReceipt(String text) {
         if (text == null || text.trim().isEmpty()) return false;
         String lower = text.toLowerCase(Locale.ROOT);
 
-        // Explicitly exclude shopping promotions, deals, and coupon ads
-        if (lower.contains("sale") || 
-            lower.contains("starting @") || 
-            lower.contains("starting at") ||
-            lower.contains("flat off") || 
-            lower.contains("cashback offer") || 
-            lower.contains("discount") || 
-            lower.contains("coupon") || 
+        // Strict promotional advertisement filters (only exclude unambiguous e-commerce shopping campaigns)
+        // Do NOT exclude "cashback" or "offer" unconditionally because Paytm pushes include "Scratchcard offer"
+        if (lower.contains("sale starting @") || 
+            lower.contains("sale starting at") || 
+            lower.contains("flat 50% off") || 
+            lower.contains("flat 70% off") || 
             lower.contains("shop now") || 
-            lower.contains("buy now") ||
-            lower.contains("order now") ||
-            lower.contains("limited time deal") ||
-            lower.contains("use code") ||
-            lower.contains("exclusive offer") ||
-            lower.contains("save up to")) {
+            lower.contains("order food now") ||
+            lower.contains("limited time deal on products") ||
+            lower.contains("use coupon code to buy")) {
             return false;
         }
 
-        // Must contain genuine incoming payment confirmation terms
+        // Comprehensive Indian Banking & UPI Payment Receipt Keywords
         boolean hasReceiptKeyword = lower.contains("received") ||
                                     lower.contains("credited") ||
                                     lower.contains("paid you") ||
                                     lower.contains("payment of") ||
                                     lower.contains("payment received") ||
+                                    lower.contains("payment from") ||
                                     lower.contains("credit of") ||
+                                    lower.contains("credit by") ||
+                                    lower.contains("credit:") ||
+                                    lower.contains("credit :") ||
+                                    lower.contains("cr to a/c") ||
+                                    lower.contains("acct credited") ||
+                                    lower.contains("a/c credited") ||
                                     lower.contains("has sent you") ||
+                                    lower.contains("transferred") ||
                                     lower.contains("deposited") ||
                                     lower.contains("utr") ||
                                     lower.contains("ref no") ||
@@ -228,9 +354,6 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         return hasReceiptKeyword && (hasAmountOrCurrency || lower.contains("test ping") || lower.contains("utr"));
     }
 
-    /**
-     * Sensory Feedback: Dual chime tone + crisp double vibration buzz
-     */
     public static void triggerSuccessFeedback() {
         try {
             new Thread(() -> {
@@ -260,9 +383,6 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         }
     }
 
-    /**
-     * Forces Android OS to reconnect/rebind to this NotificationListenerService if disconnected.
-     */
     public static void tryForceRebind(Context context) {
         if (context == null) return;
         ComponentName componentName = new ComponentName(context, PaymentNotificationListenerService.class);
@@ -288,9 +408,6 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         }
     }
 
-    /**
-     * Starts persistent foreground notification to ensure Samsung / Xiaomi OS never kills service.
-     */
     private void startForegroundNotification() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -322,8 +439,8 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
             }
 
             Notification notification = builder
-                .setContentTitle("SRC PayHook Active")
-                .setContentText("Monitoring Paytm, PhonePe, GPay & SMS in real time")
+                .setContentTitle("SRC PayHook Active (v1.5)")
+                .setContentText("Monitoring Paytm, PhonePe, GPay, SMS & Banking in real time")
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
@@ -347,11 +464,26 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         appContext = getApplicationContext();
         instance = this;
         startForegroundNotification();
+
+        trayScanHandler = new Handler(Looper.getMainLooper());
+        trayScanTask = new TrayScanTask(this);
+        trayScanHandler.post(trayScanTask);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (trayScanHandler != null && trayScanTask != null) {
+            trayScanHandler.removeCallbacks(trayScanTask);
+            trayScanHandler = null;
+            trayScanTask = null;
+        }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForegroundNotification();
+        HttpPostWorker.triggerOutboxFlush();
         return START_STICKY;
     }
 
@@ -362,21 +494,10 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         isServiceConnected = true;
         instance = this;
         startForegroundNotification();
-        addLog("Listener connected & monitoring payments in real time.");
+        addLog("Listener connected & monitoring payments in real time (v1.5).");
 
-        // Scan any unforwarded active payment notifications already in the status bar tray
-        try {
-            StatusBarNotification[] active = getActiveNotifications();
-            if (active != null && active.length > 0) {
-                for (StatusBarNotification sbn : active) {
-                    if (sbn != null) {
-                        processNotification(sbn, true);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Tray backlog scan note: " + e.getMessage());
-        }
+        scanActiveTrayNotifications();
+        HttpPostWorker.triggerOutboxFlush();
     }
 
     @Override
@@ -391,6 +512,21 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         processNotification(sbn, false);
+    }
+
+    public void scanActiveTrayNotifications() {
+        try {
+            StatusBarNotification[] active = getActiveNotifications();
+            if (active != null && active.length > 0) {
+                for (StatusBarNotification sbn : active) {
+                    if (sbn != null) {
+                        processNotification(sbn, true);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Tray backlog scan note: " + e.getMessage());
+        }
     }
 
     private void processNotification(StatusBarNotification sbn, boolean isBacklogScan) {
@@ -409,26 +545,28 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
             String combinedText = extractAllNotificationText(sbn.getNotification());
             if (combinedText.isEmpty()) return;
 
-            // 3. Verify genuine payment criteria: Exclude shopping promotions and ensure real payment receipt terms
+            // 3. Verify genuine payment criteria
             if (!isGenuinePaymentReceipt(combinedText)) {
                 return;
             }
 
-            // 4. Local deduplication: Drop identical notifications fired within 30s (Android banner updates / re-posts)
+            // 4. Local deduplication: Drop identical notifications fired within 20s (Android banner updates / re-posts)
             String dedupKey = packageName + "::" + combinedText.replaceAll("\\s+", " ").trim();
             long now = System.currentTimeMillis();
             synchronized (RECENT_NOTIFICATIONS) {
                 Long lastSeen = RECENT_NOTIFICATIONS.get(dedupKey);
                 if (lastSeen != null && (now - lastSeen) < DEDUP_WINDOW_MS) {
-                    Log.d(TAG, "Suppressed duplicate notification re-post (" + (now - lastSeen) + "ms since first post)");
                     return;
+                }
+                if (RECENT_NOTIFICATIONS.size() > 100) {
+                    RECENT_NOTIFICATIONS.clear();
                 }
                 RECENT_NOTIFICATIONS.put(dedupKey, now);
             }
 
-            String preview = combinedText.length() > 65 ? combinedText.substring(0, 65) + "..." : combinedText;
-            addLog("Payment notification intercepted from " + packageName + ": " + preview);
-            forwardNotificationAsync(combinedText, packageName);
+            // 5. Enqueue to atomic persistent disk outbox
+            long postTime = sbn.getPostTime() > 0 ? sbn.getPostTime() : now;
+            enqueueNotification(this, combinedText, packageName, postTime);
 
         } catch (Exception e) {
             Log.e(TAG, "Error processing notification", e);
@@ -436,7 +574,6 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     }
 
     public static void forwardNotificationAsync(final String notificationContent, final String packageName) {
-        Thread thread = new Thread(new HttpPostWorker(notificationContent, packageName));
-        thread.start();
+        enqueueNotification(appContext, notificationContent, packageName, System.currentTimeMillis());
     }
 }
