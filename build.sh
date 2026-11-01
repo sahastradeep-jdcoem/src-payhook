@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-VERSION_NAME="1.5"
-VERSION_CODE=5
+VERSION_NAME="1.6"
+VERSION_CODE=6
 OUTPUT_APK_NAME="src-payhook-v${VERSION_NAME}.apk"
 
 SDK_ROOT="$HOME/Library/Android/sdk"

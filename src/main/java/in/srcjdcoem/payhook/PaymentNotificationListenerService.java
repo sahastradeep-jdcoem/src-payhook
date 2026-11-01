@@ -61,6 +61,70 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     private static final Map<String, Long> RECENT_NOTIFICATIONS = new LinkedHashMap<String, Long>();
     private static final long DEDUP_WINDOW_MS = 20000; // 20 seconds
 
+    // Persistent Delivered Notifications Cache: Avoids re-forwarding acknowledged notifications on tray scans
+    public static final String PREF_DELIVERED_KEY = "src_payhook_delivered_signatures_v1";
+    private static final Map<String, Long> DELIVERED_SIGNATURES = new LinkedHashMap<String, Long>();
+    private static final int MAX_DELIVERED_CACHE = 500;
+
+    public static synchronized void loadDeliveredCache(Context ctx) {
+        if (ctx == null) ctx = appContext;
+        if (ctx == null) return;
+        try {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String raw = prefs.getString(PREF_DELIVERED_KEY, "");
+            if (raw != null && !raw.isEmpty()) {
+                String[] parts = raw.split(";;;");
+                long now = System.currentTimeMillis();
+                for (String p : parts) {
+                    if (p != null && !p.trim().isEmpty()) {
+                        DELIVERED_SIGNATURES.put(p.trim(), now);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public static synchronized boolean isNotificationDelivered(Context ctx, String signature) {
+        if (signature == null || signature.isEmpty()) return false;
+        if (DELIVERED_SIGNATURES.isEmpty()) {
+            loadDeliveredCache(ctx);
+        }
+        return DELIVERED_SIGNATURES.containsKey(signature);
+    }
+
+    public static synchronized void markNotificationDelivered(Context ctx, String signature) {
+        if (signature == null || signature.isEmpty()) return;
+        if (ctx == null) ctx = appContext;
+        if (DELIVERED_SIGNATURES.isEmpty()) {
+            loadDeliveredCache(ctx);
+        }
+        DELIVERED_SIGNATURES.put(signature, System.currentTimeMillis());
+        if (DELIVERED_SIGNATURES.size() > MAX_DELIVERED_CACHE) {
+            String firstKey = DELIVERED_SIGNATURES.keySet().iterator().next();
+            DELIVERED_SIGNATURES.remove(firstKey);
+        }
+        if (ctx != null) {
+            try {
+                StringBuilder sb = new StringBuilder();
+                for (String k : DELIVERED_SIGNATURES.keySet()) {
+                    if (sb.length() > 0) sb.append(";;;");
+                    sb.append(k);
+                }
+                ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_DELIVERED_KEY, sb.toString())
+                    .apply();
+            } catch (Exception ignored) {}
+        }
+    }
+
+    public static String getNotificationSignature(String notifKey, String packageName, long postTime, String content) {
+        String cleanContent = content != null ? content.replaceAll("\\s+", " ").trim() : "";
+        String k = notifKey != null ? notifKey : "key";
+        String p = packageName != null ? packageName : "pkg";
+        return p + "::" + k + "::" + postTime + "::" + cleanContent;
+    }
+
     // Circular in-memory log buffer for MainActivity UI
     public static final List<String> LOG_BUFFER = new ArrayList<>();
     public static MainActivity activeMainActivity = null;
@@ -113,6 +177,11 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
     // =========================================================================
 
     public static synchronized void enqueueNotification(Context ctx, String content, String packageName, long postTime) {
+        String sig = getNotificationSignature("tray", packageName, postTime, content);
+        enqueueNotification(ctx, content, packageName, postTime, sig);
+    }
+
+    public static synchronized void enqueueNotification(Context ctx, String content, String packageName, long postTime, String signature) {
         if (ctx == null) ctx = appContext;
         if (ctx == null) return;
         try {
@@ -133,6 +202,7 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
             item.put("text", content);
             item.put("packageName", packageName);
             item.put("postTime", postTime > 0 ? postTime : System.currentTimeMillis());
+            item.put("signature", signature != null ? signature : "");
             item.put("enqueuedAt", System.currentTimeMillis());
             item.put("attempts", 0);
 
@@ -439,7 +509,7 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
             }
 
             Notification notification = builder
-                .setContentTitle("SRC PayHook Active (v1.5)")
+                .setContentTitle("SRC PayHook Active (v1.6)")
                 .setContentText("Monitoring Paytm, PhonePe, GPay, SMS & Banking in real time")
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setContentIntent(pendingIntent)
@@ -494,7 +564,7 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
         isServiceConnected = true;
         instance = this;
         startForegroundNotification();
-        addLog("Listener connected & monitoring payments in real time (v1.5).");
+        addLog("Listener connected & monitoring payments in real time (v1.6).");
 
         scanActiveTrayNotifications();
         HttpPostWorker.triggerOutboxFlush();
@@ -550,23 +620,30 @@ public class PaymentNotificationListenerService extends NotificationListenerServ
                 return;
             }
 
-            // 4. Local deduplication: Drop identical notifications fired within 20s (Android banner updates / re-posts)
-            String dedupKey = packageName + "::" + combinedText.replaceAll("\\s+", " ").trim();
             long now = System.currentTimeMillis();
+            long postTime = sbn.getPostTime() > 0 ? sbn.getPostTime() : now;
+            String signature = getNotificationSignature(sbn.getKey(), packageName, postTime, combinedText);
+
+            // 4. CHECK: Has this EXACT notification already been acknowledged & delivered to the website?
+            // If already acknowledged by the server, skip it! (Stops redundant 30s tray scans)
+            if (isNotificationDelivered(this, signature)) {
+                return;
+            }
+
+            // 5. Short-window rapid burst deduplication (e.g. Android soundbox updates within 20s)
             synchronized (RECENT_NOTIFICATIONS) {
-                Long lastSeen = RECENT_NOTIFICATIONS.get(dedupKey);
+                Long lastSeen = RECENT_NOTIFICATIONS.get(signature);
                 if (lastSeen != null && (now - lastSeen) < DEDUP_WINDOW_MS) {
                     return;
                 }
                 if (RECENT_NOTIFICATIONS.size() > 100) {
                     RECENT_NOTIFICATIONS.clear();
                 }
-                RECENT_NOTIFICATIONS.put(dedupKey, now);
+                RECENT_NOTIFICATIONS.put(signature, now);
             }
 
-            // 5. Enqueue to atomic persistent disk outbox
-            long postTime = sbn.getPostTime() > 0 ? sbn.getPostTime() : now;
-            enqueueNotification(this, combinedText, packageName, postTime);
+            // 6. Enqueue to atomic persistent disk outbox
+            enqueueNotification(this, combinedText, packageName, postTime, signature);
 
         } catch (Exception e) {
             Log.e(TAG, "Error processing notification", e);

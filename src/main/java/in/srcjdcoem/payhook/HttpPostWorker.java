@@ -43,6 +43,10 @@ public class HttpPostWorker implements Runnable {
                 boolean success = attemptPost(text, pkg, postTime, attempts + 1);
                 if (success) {
                     PaymentNotificationListenerService.removeOutboxItem(ctx, id);
+                    String sig = item.optString("signature", "");
+                    if (!sig.isEmpty()) {
+                        PaymentNotificationListenerService.markNotificationDelivered(ctx, sig);
+                    }
                     PaymentNotificationListenerService.addLog("FORWARDED OK (HTTP 200): Synced to website!");
                     PaymentNotificationListenerService.triggerSuccessFeedback();
                 } else {
